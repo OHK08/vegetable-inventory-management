@@ -41,7 +41,7 @@ async function connectToMongo() {
  * @param {string} data.name - The name of the vegetable.
  * @param {number|string} data.price - The price of the vegetable.
  * @param {string} data.category - The category of the vegetable.
- * @return {Object} Validation result with isValid and error.
+ * @return {Object} Validation result withisValid and error.
  */
 function validateVegetableData(data) {
   const {name, price, category} = data;
@@ -71,7 +71,7 @@ function validateVegetableData(data) {
  * Validates daily stock vegetable entries.
  * @param {Array} vegetables - Array of vegetable stock entries.
  * @param {Object} vegetablesCollection - MongoDB vegetables collection.
- * @return {Promise<Object>} Validation result with isValid and error.
+ * @return {Promise<Object>} Validation result withisValid and error.
  */
 async function validateDailyStockVegetables(vegetables, vegetablesCollection) {
   if (!Array.isArray(vegetables)) {
@@ -142,6 +142,7 @@ async function mongoMiddleware(req, res, next) {
     req.collections = {
       vegetables: db.collection("vegetables"),
       dailyStock: db.collection("daily_stock"),
+      users: db.collection("users"),
     };
     next();
   } catch (error) {
@@ -436,7 +437,7 @@ app.put("/daily-stock/:date", async (req, res) => {
     res.status(200).json({
       id: date,
       message: result.upsertedCount ?
-      "Daily stock created" : "Daily stock updated",
+        "Daily stock created" : "Daily stock updated",
     });
   } catch (error) {
     console.error("PUT /daily-stock/:date error:", error);
@@ -468,6 +469,7 @@ app.delete("/daily-stock/:date", async (req, res) => {
     res.status(500).json({error: "Server error while deleting daily stock"});
   }
 });
+
 
 /**
  * DELETE /daily-stock/:date/vegetable/:vegetableId:
@@ -509,9 +511,207 @@ app.delete("/daily-stock/:date/vegetable/:vegetableId", async (req, res) => {
   }
 });
 
+// Users CRUD Endpoints
+
 /**
- * Handle invalid routes.
+ * Validates user data for required fields.
+ * @param {Object} data - The user data to validate.
+ * @param {string} data.name - The name of the user.
+ * @param {string} data.email - The email of the user.
+ * @param {string} data.phone - The phone number of the user.
+ * @param {string} data.password - The password of the user.
+ * @param {Array} data.vegetables - The list of vegetable IDs for vendors.
+ * @param {string} data.role - The role of the user (vendor or customer).
+ * @return {Object} Validation result withisValid and error.
  */
+function validateUserData(data) {
+  const {name, email, phone, password, vegetables, role} = data;
+  if (!name || name.trim() === "") {
+    return {isValid: false, error: "Name is required and cannot be empty"};
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return {isValid: false, error: "Valid email is required"};
+  }
+  if (!phone || !/^\d{10}$/.test(phone)) {
+    return {isValid: false, error: "Valid 10-digit phone number is required"};
+  }
+  if (!password || password.length < 6) {
+    return {isValid: false, error: "Password must be at least 6 characters long"};
+  }
+  if (!role || !["vendor", "customer"].includes(role)) {
+    return {isValid: false, error: "Role must be either 'vendor' or 'customer'"};
+  }
+  if (role === "vendor" && (!Array.isArray(vegetables) || vegetables.length === 0)) {
+    return {isValid: false, error: "Vendors must select at least one vegetable"};
+  }
+  if (Array.isArray(vegetables)) {
+    for (const vegId of vegetables) {
+      if (typeof vegId !== "string" || !/^[0-9a-fA-F]{24}$/.test(vegId)) {
+        return {isValid: false, error: "Each vegetable ID must be a valid 24-character hexadecimal string"};
+      }
+    }
+  }
+  return {isValid: true, error: null};
+}
+
+/**
+ * POST /users: Create a new user.
+ */
+app.post("/users", async (req, res) => {
+  try {
+    console.log("POST /users:", req.body);
+    const userData = req.body;
+    const validation = validateUserData(userData);
+    if (!validation.isValid) {
+      console.log("Validation failed:", validation.error);
+      return res.status(400).json({error: validation.error});
+    }
+    // Validate vegetable IDs if vendor
+    if (userData.role === "vendor" && userData.vegetables.length > 0) {
+      for (const vegId of userData.vegetables) {
+        const exists = await req.collections.vegetables.findOne({_id: new ObjectId(vegId)});
+        if (!exists) {
+          return res.status(400).json({error: `Vegetable with id ${vegId} not found`});
+        }
+      }
+    }
+    const processedData = {
+      name: userData.name,
+      email: userData.email,
+      phone: userData.phone,
+      password: userData.password, // Stored as plain string as requested
+      vegetables: userData.vegetables || [],
+      role: userData.role,
+      createdAt: new Date(),
+    };
+    console.log("Inserting user:", processedData);
+    const result = await req.collections.users.insertOne(processedData);
+    console.log("Insert result:", result);
+    res.status(201).json({
+      id: result.insertedId,
+      message: "User created",
+    });
+  } catch (error) {
+    console.error("POST /users error:", error);
+    res.status(500).json({error: "Server error while creating user"});
+  }
+});
+
+/**
+ * GET /users/:id: Get a specific user.
+ */
+app.get("/users/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    console.log("GET /users/:id", id);
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({error: "Invalid ID format: Must be a 24-character hexadecimal string"});
+    }
+    const user = await req.collections.users.findOne({_id: new ObjectId(id)});
+    if (!user) {
+      return res.status(404).json({error: "User not found"});
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("GET /users/:id error:", error);
+    res.status(500).json({error: "Server error while fetching user"});
+  }
+});
+
+/**
+ * PUT /users/:id: Update a user.
+ */
+app.put("/users/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    console.log("PUT /users/:id", id, req.body);
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({error: "Invalid ID format: Must be a 24-character hexadecimal string"});
+    }
+    const userData = req.body;
+    const validation = validateUserData(userData);
+    if (!validation.isValid) {
+      console.log("Validation failed:", validation.error);
+      return res.status(400).json({error: validation.error});
+    }
+    // Validate vegetable IDs if vendor
+    if (userData.role === "vendor" && userData.vegetables.length > 0) {
+      for (const vegId of userData.vegetables) {
+        const exists = await req.collections.vegetables.findOne({_id: new ObjectId(vegId)});
+        if (!exists) {
+          return res.status(400).json({error: `Vegetable with id ${vegId} not found`});
+        }
+      }
+    }
+    const processedData = {
+      name: userData.name,
+      email: userData.email,
+      phone: userData.phone,
+      password: userData.password,
+      vegetables: userData.vegetables || [],
+      role: userData.role,
+    };
+    const result = await req.collections.users.updateOne(
+        {_id: new ObjectId(id)},
+        {
+          $set: {
+            ...processedData,
+            updatedAt: new Date(),
+          },
+        },
+    );
+    if (result.matchedCount === 0) {
+      return res.status(404).json({error: "User not found"});
+    }
+    res.status(200).json({message: "User updated"});
+  } catch (error) {
+    console.error("PUT /users/:id error:", error);
+    res.status(500).json({error: "Server error while updating user"});
+  }
+});
+
+/**
+ * DELETE /users/:id: Delete a user.
+ */
+app.delete("/users/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    console.log("DELETE /users/:id", id);
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({error: "Invalid ID format: Must be a 24-character hexadecimal string"});
+    }
+    const result = await req.collections.users.deleteOne({_id: new ObjectId(id)});
+    if (result.deletedCount === 0) {
+      return res.status(404).json({error: "User not found"});
+    }
+    res.status(200).json({message: "User deleted"});
+  } catch (error) {
+    console.error("DELETE /users/:id error:", error);
+    res.status(500).json({error: "Server error while deleting user"});
+  }
+});
+
+/**
+ * POST /users/check: Check if a user exists by email.
+ */
+app.post("/users/check", async (req, res) => {
+  try {
+    const {email} = req.body;
+    console.log("POST /users/check:", email);
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({error: "Valid email is required"});
+    }
+    const user = await req.collections.users.findOne({email});
+    res.status(200).json({
+      exists: !!user,
+    });
+  } catch (error) {
+    console.error("POST /users/check error:", error);
+    res.status(500).json({error: "Server error while checking user"});
+  }
+});
+
+// Handle invalid routes
 app.use((req, res) => {
   console.log("Invalid route:", req.method, req.path);
   res.status(404).json({error: "Endpoint not found"});

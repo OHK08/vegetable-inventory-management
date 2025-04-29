@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-function LandingPage() {
+function HomePage() {
   return (
     <div className="container-fluid px-0" style={{ backgroundColor: '#f4fff4', minHeight: '100vh' }}>
       {/* Hero Section */}
@@ -14,7 +14,7 @@ function LandingPage() {
         }}
       >
         <div className="container py-5">
-          <h1 className="display-4 fw-bold">Welcome to Farm Fresh</h1>
+          <h1 className="display-4 fw-bold">Welcome to Farm Fresh HOME PAGE</h1>
           <p className="col-md-8 fs-4">
             Manage your vegetable inventory with ease. Track daily stock, add new vegetables, and explore stock history seamlessly.
           </p>
@@ -120,4 +120,4 @@ function LandingPage() {
   );
 }
 
-export default LandingPage;
+export default HomePage;

@@ -16,9 +16,9 @@ const Footer = () => {
           </div>
           <div className="col-md-4 mb-3">
             <h5>Follow Us</h5>
-            <a href="#" className="text-white me-2"><i className="bi bi-facebook"></i></a>
-            <a href="#" className="text-white me-2"><i className="bi bi-twitter"></i></a>
-            <a href="#" className="text-white"><i className="bi bi-instagram"></i></a>
+            <a href="#" className="text-white me-2"><i className="bi bi-facebook fs-4"></i></a>
+            <a href="#" className="text-white me-2"><i className="bi bi-twitter fs-4"></i></a>
+            <a href="#" className="text-white"><i className="bi bi-instagram fs-4"></i></a>
           </div>
         </div>
         <p className="mt-3">&copy; 2025 FarmFresh. All rights reserved.</p>
